@@ -1,0 +1,10 @@
+# Multi-Function Slack Bot - Core Dependencies
+
+# Slack SDK
+slack-bolt>=1.18.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Note: Function-specific dependencies should be installed from each function's
+# requirements.txt (e.g., payroll_lookup/requirements.txt)

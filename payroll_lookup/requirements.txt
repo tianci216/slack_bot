@@ -1,0 +1,11 @@
+# Slack
+slack-bolt>=1.18.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Google API (for YouTube)
+google-api-python-client>=2.100.0
