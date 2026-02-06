@@ -14,14 +14,26 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent / "data"
-DB_PATH = DATA_DIR / "bot.db"
+# Default database location (can be overridden via configure_storage)
+_data_dir: Optional[Path] = None
+_db_path: Optional[Path] = None
+
+
+def configure_storage(data_dir: Path) -> None:
+    """Configure the storage directory. Must be called before any storage use."""
+    global _data_dir, _db_path
+    _data_dir = data_dir
+    _db_path = data_dir / "bot.db"
 
 
 def get_db_path() -> Path:
     """Get the database path, creating directory if needed."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return DB_PATH
+    global _data_dir, _db_path
+    if _db_path is None:
+        _data_dir = Path(__file__).parent.parent / "data"
+        _db_path = _data_dir / "bot.db"
+    _data_dir.mkdir(parents=True, exist_ok=True)
+    return _db_path
 
 
 @contextmanager

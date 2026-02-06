@@ -12,7 +12,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "anthropic/claude-3-haiku-20240307"
+DEFAULT_MODEL = "anthropic/claude-3-haiku"
 DEFAULT_TEMPERATURE = 0.3
 DEFAULT_MAX_TOKENS = 2000
 MAX_RETRIES = 3

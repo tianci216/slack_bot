@@ -12,6 +12,7 @@ venv/
 
 # Database
 data/bot.db
+data/*/bot.db
 
 # IDE
 .vscode/

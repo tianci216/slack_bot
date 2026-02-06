@@ -9,6 +9,8 @@ Central bot that:
 
 import os
 import sys
+import json
+import argparse
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
@@ -17,7 +19,8 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 # Add current directory to path for core imports
-sys.path.insert(0, str(Path(__file__).parent))
+BOT_DIR = Path(__file__).parent
+sys.path.insert(0, str(BOT_DIR))
 
 from core.dispatcher import Dispatcher
 
@@ -29,10 +32,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_environment():
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Multi-Function Slack Bot")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to bot config JSON file (e.g., bots/slack_bot.json)"
+    )
+    return parser.parse_args()
+
+
+def load_environment(env_file: str | None = None):
     """Load and validate environment variables."""
-    # Load from parent .env
-    env_path = Path(__file__).parent / ".env"
+    if env_file:
+        env_path = BOT_DIR / env_file
+    else:
+        env_path = BOT_DIR / ".env"
     load_dotenv(env_path)
 
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
@@ -45,10 +62,22 @@ def load_environment():
         sys.exit(1)
 
 
-# Initialize
-load_environment()
+# Parse config and initialize
+args = parse_args()
+config = None
+
+if args.config:
+    config_path = BOT_DIR / args.config
+    with open(config_path) as f:
+        config = json.load(f)
+    logger.info(f"Loaded bot config: {config.get('name', args.config)}")
+
+load_environment(config.get("env_file") if config else None)
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
-dispatcher = Dispatcher()
+
+_data_dir = BOT_DIR / config["data_dir"] if config and "data_dir" in config else None
+_allowed_functions = config.get("functions") if config else None
+dispatcher = Dispatcher(allowed_functions=_allowed_functions, data_dir=_data_dir)
 
 
 # ============================================================================

@@ -4,6 +4,7 @@ Conversation state management for Boolean Search function.
 Persists user state (platform, parsed JD, current query) in SQLite.
 """
 
+import sys
 import sqlite3
 import json
 import logging
@@ -11,37 +12,15 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
-from contextlib import contextmanager
 
+# Add parent directory for core imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from core.storage import get_connection
 from job_parser import ParsedJobDescription
 from query_builder import Platform
 
 logger = logging.getLogger(__name__)
-
-# Use the shared database from core
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-DB_PATH = DATA_DIR / "bot.db"
-
-
-def get_db_path() -> Path:
-    """Get the database path, creating directory if needed."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return DB_PATH
-
-
-@contextmanager
-def get_connection():
-    """Context manager for database connections."""
-    conn = sqlite3.connect(get_db_path())
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 @dataclass

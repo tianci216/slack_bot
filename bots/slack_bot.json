@@ -1,0 +1,6 @@
+{
+  "name": "slack_bot",
+  "env_file": ".env.slack_bot",
+  "data_dir": "data/slack_bot",
+  "functions": ["payroll_lookup"]
+}

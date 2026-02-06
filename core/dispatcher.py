@@ -10,8 +10,10 @@ Handles:
 import logging
 from typing import Optional, Callable
 
+from pathlib import Path
+
 from .models import BotFunction, FunctionResponse, MessageResult
-from .storage import StateStorage, PermissionsStorage, UsageLogger
+from .storage import StateStorage, PermissionsStorage, UsageLogger, configure_storage
 from .plugin_loader import PluginLoader
 
 logger = logging.getLogger(__name__)
@@ -20,11 +22,13 @@ logger = logging.getLogger(__name__)
 class Dispatcher:
     """Central dispatcher that routes messages to the appropriate function."""
 
-    def __init__(self):
+    def __init__(self, allowed_functions: list[str] | None = None, data_dir: Path | None = None):
+        if data_dir:
+            configure_storage(data_dir)
         self.state_storage = StateStorage()
         self.permissions = PermissionsStorage()
         self.usage_logger = UsageLogger()
-        self.plugin_loader = PluginLoader()
+        self.plugin_loader = PluginLoader(allowed_functions=allowed_functions)
         self.functions: dict[str, BotFunction] = {}
 
         self._load_functions()

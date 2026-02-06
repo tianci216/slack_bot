@@ -6,10 +6,17 @@ A pluggable Slack bot backend that supports multiple functions with user routing
 
 ```
 /home/molt/Slack Bot/
-├── main.py                    # Central bot entry point
-├── .env                       # Shared Slack credentials
+├── main.py                    # Single-bot entry point (accepts --config)
+├── run_all.py                 # Multi-bot process manager
+├── .env                       # Default Slack credentials (standalone mode)
+├── .env.slack_bot             # Company A Slack tokens
+├── .env.paired_helper         # Company B Slack tokens
 ├── requirements.txt           # Core dependencies
 ├── .venv/                     # Python virtual environment
+│
+├── bots/                      # Per-bot configuration
+│   ├── slack_bot.json         # Company A: env file, data dir, functions
+│   └── paired_helper.json     # Company B: env file, data dir, functions
 │
 ├── core/                      # Management logic
 │   ├── models.py              # BotFunction interface
@@ -18,9 +25,15 @@ A pluggable Slack bot backend that supports multiple functions with user routing
 │   └── plugin_loader.py       # Dynamic function discovery
 │
 ├── data/
-│   └── bot.db                 # SQLite database
+│   ├── slack_bot/bot.db       # Company A database
+│   └── paired_helper/bot.db   # Company B database
 │
-├── payroll_lookup/            # Example function
+├── payroll_lookup/            # Company A function
+│   ├── function.py            # BotFunction implementation
+│   ├── .env                   # Function-specific API keys
+│   └── tools/                 # Function logic
+│
+├── boolean_search/            # Company B function
 │   ├── function.py            # BotFunction implementation
 │   ├── .env                   # Function-specific API keys
 │   └── tools/                 # Function logic
@@ -280,15 +293,62 @@ See [payroll_lookup/function.py](payroll_lookup/function.py) for a complete exam
 
 ## Running the Bot
 
+### Multi-bot mode (production)
+
+Runs all bots defined in `bots/*.json` as separate processes:
+
 ```bash
 cd "/home/molt/Slack Bot"
 source .venv/bin/activate
+python run_all.py
+```
+
+Or via systemd:
+```bash
+sudo systemctl start slack-bot
+```
+
+### Single-bot mode (development/testing)
+
+Run a specific bot by its config:
+```bash
+python main.py --config bots/slack_bot.json
+```
+
+Or run standalone (loads `.env`, discovers all functions):
+```bash
 python main.py
 ```
 
+## Multi-Bot Configuration
+
+Each bot is defined by a JSON file in `bots/`:
+
+```json
+{
+  "name": "my_bot",
+  "env_file": ".env.my_bot",
+  "data_dir": "data/my_bot",
+  "functions": ["function_a", "function_b"]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Unique identifier (must match filename) |
+| `env_file` | Path to `.env` file with SLACK_BOT_TOKEN and SLACK_APP_TOKEN |
+| `data_dir` | Directory for this bot's SQLite database |
+| `functions` | List of function directories this bot should load |
+
+### Adding a new bot
+
+1. Create `bots/<name>.json` with the config above
+2. Create `.env.<name>` with the bot's Slack tokens
+3. Restart the service: `sudo systemctl restart slack-bot`
+
 ## Environment Variables
 
-**Parent .env** (Slack credentials):
+**Per-bot .env** (Slack credentials):
 ```
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...

@@ -1,0 +1,6 @@
+{
+  "name": "paired_helper",
+  "env_file": ".env.paired_helper",
+  "data_dir": "data/paired_helper",
+  "functions": ["boolean_search"]
+}

@@ -22,10 +22,11 @@ class PluginLoader:
     - function.py with a get_function() factory
     """
 
-    def __init__(self, root_dir: Path = BOT_ROOT):
+    def __init__(self, root_dir: Path = BOT_ROOT, allowed_functions: list[str] | None = None):
         self.root_dir = root_dir
+        self.allowed_functions = allowed_functions
         self.excluded_dirs = {
-            'core', 'data', 'templates', '.venv', '__pycache__',
+            'core', 'data', 'bots', 'templates', '.venv', '__pycache__',
             '.git', '.claude', '.tmp'
         }
 
@@ -42,6 +43,8 @@ class PluginLoader:
             if not item.is_dir():
                 continue
             if item.name in self.excluded_dirs or item.name.startswith('.'):
+                continue
+            if self.allowed_functions is not None and item.name not in self.allowed_functions:
                 continue
 
             function_file = item / "function.py"
