@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 # Add parent directory for core imports
@@ -32,6 +32,7 @@ class ConversationState:
     current_query: Optional[str]
     original_text: Optional[str]
     last_updated: datetime
+    selected_skills: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
@@ -41,6 +42,7 @@ class ConversationState:
             "parsed_jd": self.parsed_jd.to_dict() if self.parsed_jd else None,
             "current_query": self.current_query,
             "original_text": self.original_text,
+            "selected_skills": self.selected_skills,
             "last_updated": self.last_updated.isoformat()
         }
 
@@ -57,13 +59,22 @@ class ConversationState:
 
         platform = Platform.from_string(row["platform"]) or Platform.SEEKOUT
 
+        selected_skills = []
+        try:
+            raw = row["selected_skills_json"]
+            if raw:
+                selected_skills = json.loads(raw)
+        except (KeyError, json.JSONDecodeError):
+            pass
+
         return cls(
             user_id=row["user_id"],
             platform=platform,
             parsed_jd=parsed_jd,
             current_query=row["current_query"],
             original_text=row["original_text"],
-            last_updated=datetime.fromisoformat(row["last_updated"])
+            last_updated=datetime.fromisoformat(row["last_updated"]),
+            selected_skills=selected_skills,
         )
 
 
@@ -84,9 +95,18 @@ class ConversationManager:
                     parsed_jd_json TEXT,
                     current_query TEXT,
                     original_text TEXT,
+                    selected_skills_json TEXT DEFAULT '[]',
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Add column for existing databases
+            try:
+                cursor.execute(
+                    "ALTER TABLE boolean_search_state "
+                    "ADD COLUMN selected_skills_json TEXT DEFAULT '[]'"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
         logger.info("Boolean search state table initialized")
 
     def get_state(self, user_id: str) -> Optional[ConversationState]:
@@ -121,17 +141,21 @@ class ConversationManager:
         if state.parsed_jd:
             parsed_jd_json = json.dumps(state.parsed_jd.to_dict())
 
+        selected_skills_json = json.dumps(state.selected_skills or [])
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO boolean_search_state
-                (user_id, platform, parsed_jd_json, current_query, original_text, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (user_id, platform, parsed_jd_json, current_query, original_text,
+                 selected_skills_json, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     platform = excluded.platform,
                     parsed_jd_json = excluded.parsed_jd_json,
                     current_query = excluded.current_query,
                     original_text = excluded.original_text,
+                    selected_skills_json = excluded.selected_skills_json,
                     last_updated = excluded.last_updated
             """, (
                 state.user_id,
@@ -139,6 +163,7 @@ class ConversationManager:
                 parsed_jd_json,
                 state.current_query,
                 state.original_text,
+                selected_skills_json,
                 datetime.utcnow().isoformat()
             ))
 

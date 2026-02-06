@@ -26,38 +26,35 @@ class Platform(Enum):
         return None
 
 
-def build_query(parsed_jd: ParsedJobDescription, platform: Platform) -> str:
+def build_query(
+    parsed_jd: ParsedJobDescription,
+    platform: Platform,
+    selected_skills: list[str] | None = None
+) -> str:
     """
-    Build a Boolean query for the specified platform.
+    Build a Boolean query for the specified platform using only selected skills.
 
     Args:
         parsed_jd: Parsed job description data
         platform: Target platform
+        selected_skills: Skills to include in the query (AND'd together)
 
     Returns:
         Boolean query string formatted for the platform
     """
     if platform == Platform.SEEKOUT:
-        return build_seekout_query(parsed_jd)
+        return _build_seekout_query(parsed_jd, selected_skills or [])
     elif platform == Platform.LINKEDIN:
-        return build_linkedin_query(parsed_jd)
+        return _build_linkedin_query(parsed_jd, selected_skills or [])
     else:
         raise ValueError(f"Unsupported platform: {platform}")
 
 
-def build_seekout_query(parsed_jd: ParsedJobDescription) -> str:
-    """
-    Build a SeekOut Boolean query with field operators.
-
-    SeekOut supports:
-    - Field operators: cur_title:, skills:, cur_company:, etc.
-    - Wildcards: java* matches javascript, javabeans
-    - Proximity: "senior engineer"~1
-    - AND, OR, NOT operators (uppercase)
-    - Grouping with parentheses
-    - Exact phrases with quotes
-    - Minus symbol for exclusion: -cur_company:"Competitor"
-    """
+def _build_seekout_query(
+    parsed_jd: ParsedJobDescription,
+    selected_skills: list[str]
+) -> str:
+    """Build a SeekOut Boolean query with field operators."""
     parts = []
 
     # Job titles with field operator
@@ -65,61 +62,26 @@ def build_seekout_query(parsed_jd: ParsedJobDescription) -> str:
         titles = _format_or_group(parsed_jd.job_titles, quote=True)
         parts.append(f"cur_title:({titles})")
 
-    # Required skills - use AND to require all
-    if parsed_jd.required_skills:
-        required = _format_and_group(parsed_jd.required_skills, quote=True)
-        parts.append(f"skills:({required})")
-
-    # Preferred skills - use OR as optional boost
-    if parsed_jd.preferred_skills:
-        preferred = _format_or_group(parsed_jd.preferred_skills, quote=True)
-        parts.append(f"skills:({preferred})")
-
-    # Locations
-    if parsed_jd.locations:
-        # Filter out "Remote" for location fields
-        cities_states = [loc for loc in parsed_jd.locations if loc.lower() != "remote"]
-        if cities_states:
-            loc_query = _format_or_group(cities_states, quote=False)
-            parts.append(f"(city:({loc_query}) OR state:({loc_query}))")
-
-    # Education
-    if parsed_jd.education:
-        degrees = _format_or_group(parsed_jd.education, quote=True)
-        parts.append(f"degrees:({degrees})")
-
-    # Certifications - search in summary/skills
-    if parsed_jd.certifications:
-        certs = _format_or_group(parsed_jd.certifications, quote=True)
-        parts.append(f"(summary:({certs}) OR skills:({certs}))")
-
-    # Industry targeting
-    if parsed_jd.industries:
-        industries = _format_or_group(parsed_jd.industries, quote=True)
-        parts.append(f"industry:({industries})")
+    # Only selected skills, AND'd together
+    if selected_skills:
+        skills = _format_and_group(selected_skills, quote=True)
+        parts.append(f"skills:({skills})")
 
     # Company exclusions using minus syntax
     for company in parsed_jd.companies_to_exclude:
         parts.append(f'-cur_company:"{company}"')
 
-    # Join all parts with AND
     if not parts:
         return ""
 
     return " AND ".join(parts)
 
 
-def build_linkedin_query(parsed_jd: ParsedJobDescription) -> str:
-    """
-    Build a LinkedIn Boolean query.
-
-    LinkedIn supports:
-    - AND, OR, NOT operators (uppercase)
-    - Grouping with parentheses
-    - Exact phrases with quotes
-    - NO field operators (searches entire profile)
-    - NO wildcards
-    """
+def _build_linkedin_query(
+    parsed_jd: ParsedJobDescription,
+    selected_skills: list[str]
+) -> str:
+    """Build a LinkedIn Boolean query (no field operators)."""
     parts = []
 
     # Job titles as OR group
@@ -127,39 +89,15 @@ def build_linkedin_query(parsed_jd: ParsedJobDescription) -> str:
         titles = _format_or_group(parsed_jd.job_titles, quote=True)
         parts.append(f"({titles})")
 
-    # Required skills as AND group
-    if parsed_jd.required_skills:
-        required = _format_and_group(parsed_jd.required_skills, quote=True)
-        parts.append(f"({required})")
-
-    # Preferred skills as OR group (weaker matching)
-    if parsed_jd.preferred_skills:
-        preferred = _format_or_group(parsed_jd.preferred_skills, quote=True)
-        parts.append(f"({preferred})")
-
-    # Locations (just as keywords, no field operator)
-    if parsed_jd.locations:
-        # Filter out "Remote"
-        locations = [loc for loc in parsed_jd.locations if loc.lower() != "remote"]
-        if locations:
-            loc_query = _format_or_group(locations, quote=True)
-            parts.append(f"({loc_query})")
-
-    # Education (as keywords)
-    if parsed_jd.education:
-        degrees = _format_or_group(parsed_jd.education, quote=True)
-        parts.append(f"({degrees})")
-
-    # Certifications (as keywords)
-    if parsed_jd.certifications:
-        certs = _format_or_group(parsed_jd.certifications, quote=True)
-        parts.append(f"({certs})")
+    # Only selected skills, AND'd together
+    if selected_skills:
+        skills = _format_and_group(selected_skills, quote=True)
+        parts.append(f"({skills})")
 
     # Company exclusions using NOT
     for company in parsed_jd.companies_to_exclude:
         parts.append(f'NOT "{company}"')
 
-    # Join all parts with AND
     if not parts:
         return ""
 
@@ -188,23 +126,20 @@ def _format_and_group(items: list[str], quote: bool = True) -> str:
     return " AND ".join(formatted)
 
 
-def format_query_display(
+def format_skill_picker(
     query: str,
     platform: Platform,
-    parsed_jd: ParsedJobDescription
+    parsed_jd: ParsedJobDescription,
+    selected_skills: list[str]
 ) -> str:
     """
-    Format the query for display in Slack with extracted info summary.
+    Format the query and skill picker for display in Slack.
 
-    Args:
-        query: The Boolean query string
-        platform: The platform it's formatted for
-        parsed_jd: The parsed job description
-
-    Returns:
-        Formatted string for Slack display
+    Shows the current query in a code block, followed by a numbered
+    list of available skills with checkmarks for selected ones.
     """
     platform_name = platform.value.title()
+    selected_set = set(selected_skills)
 
     lines = [
         f"*Platform: {platform_name}*",
@@ -212,47 +147,41 @@ def format_query_display(
         "```",
         query,
         "```",
-        "",
-        "*Extracted Information:*"
     ]
 
-    if parsed_jd.job_titles:
-        lines.append(f"- *Job Titles:* {', '.join(parsed_jd.job_titles)}")
+    # Skill picker
+    if parsed_jd.skills:
+        lines.append("")
+        lines.append("*Available Skills:*")
+        for i, skill in enumerate(parsed_jd.skills, 1):
+            check = "  \u2713" if skill in selected_set else ""
+            lines.append(f"`{i:>2}.` {skill}{check}")
 
-    if parsed_jd.required_skills:
-        lines.append(f"- *Required Skills:* {', '.join(parsed_jd.required_skills)}")
-
-    if parsed_jd.preferred_skills:
-        lines.append(f"- *Preferred Skills:* {', '.join(parsed_jd.preferred_skills)}")
-
+    # Extra info
+    info_parts = []
     if parsed_jd.experience_level:
         exp = parsed_jd.experience_level
         if parsed_jd.years_experience:
             exp += f" ({parsed_jd.years_experience} years)"
-        lines.append(f"- *Experience:* {exp}")
-
+        info_parts.append(f"*Experience:* {exp}")
     if parsed_jd.locations:
-        lines.append(f"- *Locations:* {', '.join(parsed_jd.locations)}")
-
+        info_parts.append(f"*Locations:* {', '.join(parsed_jd.locations)}")
     if parsed_jd.education:
-        lines.append(f"- *Education:* {', '.join(parsed_jd.education)}")
+        info_parts.append(f"*Education:* {', '.join(parsed_jd.education)}")
 
-    if parsed_jd.certifications:
-        lines.append(f"- *Certifications:* {', '.join(parsed_jd.certifications)}")
+    if info_parts:
+        lines.append("")
+        lines.append(" | ".join(info_parts))
 
-    if parsed_jd.companies_to_exclude:
-        lines.append(f"- *Excluding:* {', '.join(parsed_jd.companies_to_exclude)}")
-
-    # Add quick actions
+    # Commands
     lines.extend([
         "",
-        "*Quick Actions:*",
+        "*Commands:*",
+        "`add 2,5` - Add skills by number",
+        "`add all` - Add all skills",
+        "`remove 2` - Remove a skill",
         "`platform linkedin` or `platform seekout` - Switch platform",
-        "`broader` - Fewer requirements, more candidates",
-        "`narrower` - More specific, fewer candidates",
-        "`add [skill]` - Add a required skill",
-        "`remove [skill]` - Remove a skill",
-        "`clear` - Start over with a new job description"
+        "`clear` - Start over",
     ])
 
     return "\n".join(lines)

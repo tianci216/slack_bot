@@ -283,13 +283,24 @@ These are always available:
 - `/bot-help` - List available functions
 - `/bot-status` - Show current function
 
-## Example: payroll_lookup Function
+## Example Functions
 
-See [payroll_lookup/function.py](payroll_lookup/function.py) for a complete example that:
+### payroll_lookup
+
+See [payroll_lookup/function.py](payroll_lookup/function.py) for an example that:
 - Processes URLs from messages
 - Calls external APIs in parallel
 - Returns formatted responses
 - Handles errors gracefully
+
+### boolean_search
+
+See [boolean_search/function.py](boolean_search/function.py) for an example that:
+- Parses job descriptions via LLM into structured data
+- Starts with a broad query (titles + one primary skill) to guarantee results
+- Shows a numbered skill picker so users can `add 2,5` or `remove 3` to refine
+- Supports `add all`, `add <name>`, `remove all`, `platform seekout/linkedin`, `clear`
+- Tracks per-user selected skills in conversation state (SQLite)
 
 ## Running the Bot
 

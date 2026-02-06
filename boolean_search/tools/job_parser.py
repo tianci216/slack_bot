@@ -16,9 +16,9 @@ SYSTEM_PROMPT = """You are an expert technical recruiter specializing in Boolean
 Analyze the provided job description and extract structured information for building candidate search queries.
 
 Your task is to identify and extract:
-1. **Job Titles**: The primary title AND 3-5 alternative titles candidates might use (variations, synonyms, level equivalents)
-2. **Required Skills**: Must-have technical skills, tools, languages, frameworks
-3. **Preferred Skills**: Nice-to-have skills mentioned as preferred or bonus
+1. **Job Titles**: The primary title AND 2-4 alternative titles candidates might use
+2. **Primary Skill**: The single most defining skill for this role - the one skill that best identifies qualified candidates
+3. **Skills**: All relevant skills from the JD, ordered by importance (most critical first). Max 15 items.
 4. **Experience Level**: Entry, Mid, Senior, Lead, Principal, Director, etc.
 5. **Years Experience**: If mentioned (e.g., "5+", "3-5 years")
 6. **Locations**: Cities, states, regions, or "Remote" if applicable
@@ -32,15 +32,16 @@ IMPORTANT GUIDELINES:
 - For job titles, think like a recruiter: what variations would real candidates use?
   - "Software Engineer" → also "Developer", "Programmer", "SWE"
   - "Senior" → also "Sr.", "Staff", "Lead"
-- For skills, separate truly required from preferred/bonus
-- Be conservative with required skills - only include what's explicitly required
-- Include both full names and common abbreviations for skills (AWS, Amazon Web Services)
+- The primary_skill should be the ONE skill that most defines this role
+- Order the skills list from most important to least important
+- Keep skill names concise (e.g., "Python" not "Python programming language")
+- Do NOT exceed 15 skills total
 
 Return ONLY valid JSON with this exact structure:
 {
-  "job_titles": ["Primary Title", "Alt Title 1", "Alt Title 2", ...],
-  "required_skills": ["skill1", "skill2", ...],
-  "preferred_skills": ["skill1", "skill2", ...],
+  "job_titles": ["Primary Title", "Alt Title 1", "Alt Title 2"],
+  "primary_skill": "The single most essential skill",
+  "skills": ["skill1", "skill2", "skill3", "...up to 15"],
   "experience_level": "Senior",
   "years_experience": "5+",
   "locations": ["City1", "State1", "Remote"],
@@ -58,8 +59,8 @@ If a field has no information, use an empty list [] or null for strings."""
 class ParsedJobDescription:
     """Structured data extracted from a job description."""
     job_titles: list[str] = field(default_factory=list)
-    required_skills: list[str] = field(default_factory=list)
-    preferred_skills: list[str] = field(default_factory=list)
+    primary_skill: Optional[str] = None
+    skills: list[str] = field(default_factory=list)
     experience_level: Optional[str] = None
     years_experience: Optional[str] = None
     locations: list[str] = field(default_factory=list)
@@ -76,10 +77,18 @@ class ParsedJobDescription:
     @classmethod
     def from_dict(cls, data: dict) -> "ParsedJobDescription":
         """Create from dictionary."""
+        # Support legacy format with required_skills/preferred_skills
+        if "required_skills" in data or "preferred_skills" in data:
+            skills = data.get("required_skills", []) + data.get("preferred_skills", [])
+            primary_skill = skills[0] if skills else None
+        else:
+            skills = data.get("skills", [])
+            primary_skill = data.get("primary_skill")
+
         return cls(
             job_titles=data.get("job_titles", []),
-            required_skills=data.get("required_skills", []),
-            preferred_skills=data.get("preferred_skills", []),
+            primary_skill=primary_skill,
+            skills=skills,
             experience_level=data.get("experience_level"),
             years_experience=data.get("years_experience"),
             locations=data.get("locations", []),
@@ -92,7 +101,7 @@ class ParsedJobDescription:
 
     def is_empty(self) -> bool:
         """Check if no useful data was extracted."""
-        return not self.job_titles and not self.required_skills
+        return not self.job_titles and not self.skills
 
 
 def parse_job_description(text: str) -> ParsedJobDescription:
@@ -130,8 +139,8 @@ def parse_job_description(text: str) -> ParsedJobDescription:
 
         logger.info(
             f"Parsed JD: {len(parsed.job_titles)} titles, "
-            f"{len(parsed.required_skills)} required skills, "
-            f"{len(parsed.preferred_skills)} preferred skills"
+            f"primary_skill={parsed.primary_skill}, "
+            f"{len(parsed.skills)} skills"
         )
 
         return parsed
@@ -171,10 +180,9 @@ Current configuration:
 User instruction: "{instruction}"
 
 Apply the user's instruction to modify the configuration. Common instructions:
-- "add [skill]" - Add to required_skills
-- "remove [skill]" - Remove from required_skills or preferred_skills
-- "broader" - Make search broader: reduce required skills, expand job titles, remove location restrictions
-- "narrower" - Make search more specific: move preferred skills to required, add more specific titles
+- "add [skill]" - Add to the skills list
+- "remove [skill]" - Remove from the skills list
+- "change titles" - Modify job titles
 
 Return the COMPLETE updated configuration as JSON (same structure as input).
 Only modify what the user requested - preserve everything else."""
