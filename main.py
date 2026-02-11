@@ -79,6 +79,10 @@ _data_dir = BOT_DIR / config["data_dir"] if config and "data_dir" in config else
 _allowed_functions = config.get("functions") if config else None
 dispatcher = Dispatcher(allowed_functions=_allowed_functions, data_dir=_data_dir)
 
+# Sync access config from bot JSON if present
+if config and "access" in config:
+    dispatcher.permissions.sync_from_config(config["access"])
+
 
 # ============================================================================
 # SLASH COMMANDS

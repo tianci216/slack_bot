@@ -276,6 +276,55 @@ class PermissionsStorage:
             cursor.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,))
             return cursor.fetchone() is not None
 
+    def sync_from_config(self, access_config: dict) -> None:
+        """
+        Sync permissions from a JSON config dict, replacing existing data.
+
+        Expected format:
+            {
+                "admins": ["U123", "U456"],
+                "open_functions": ["func_a"],
+                "function_permissions": {
+                    "func_b": ["U123", "U789"]
+                }
+            }
+        """
+        with get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Clear existing permissions
+            cursor.execute("DELETE FROM admins")
+            cursor.execute("DELETE FROM open_functions")
+            cursor.execute("DELETE FROM function_permissions")
+
+            # Load admins
+            for user_id in access_config.get("admins", []):
+                cursor.execute(
+                    "INSERT OR IGNORE INTO admins (user_id) VALUES (?)",
+                    (user_id,)
+                )
+
+            # Load open functions
+            for func_name in access_config.get("open_functions", []):
+                cursor.execute(
+                    "INSERT OR IGNORE INTO open_functions (function_name) VALUES (?)",
+                    (func_name,)
+                )
+
+            # Load per-function user permissions
+            for func_name, user_ids in access_config.get("function_permissions", {}).items():
+                for user_id in user_ids:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO function_permissions (function_name, user_id) VALUES (?, ?)",
+                        (func_name, user_id)
+                    )
+
+        logger.info(
+            f"Synced access config: {len(access_config.get('admins', []))} admins, "
+            f"{len(access_config.get('open_functions', []))} open functions, "
+            f"{len(access_config.get('function_permissions', {}))} restricted functions"
+        )
+
 
 class UsageLogger:
     """Logs all function usage for analytics."""

@@ -2,5 +2,13 @@
   "name": "slack_bot",
   "env_file": ".env.slack_bot",
   "data_dir": "data/slack_bot",
-  "functions": ["payroll_lookup"]
+  "functions": ["payroll_lookup", "contact_finder"],
+  "access": {
+    "admins": ["U08H431BZ6D","U02Q5HS84MD","U02PKB7FPK3"],
+    "open_functions": [],
+    "function_permissions": {
+      "payroll_lookup":["U09MGTJUY6Q"],
+      "contact_finder":["U09VCJVE65C"]
+    }
+  }
 }
