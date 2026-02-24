@@ -1,0 +1,20 @@
+services:
+  slack-bot:
+    build: .
+    image: slack-bot:latest
+    restart: unless-stopped
+    env_file: .env.slack_bot
+    volumes:
+      - ./functions:/app/functions:ro
+      - ./data/slack_bot:/app/data
+      - ./access.slack_bot.json:/app/access.json:ro
+
+  paired-helper:
+    build: .
+    image: slack-bot:latest
+    restart: unless-stopped
+    env_file: .env.paired_helper
+    volumes:
+      - ./functions:/app/functions:ro
+      - ./data/paired_helper:/app/data
+      - ./access.paired_helper.json:/app/access.json:ro

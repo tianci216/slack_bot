@@ -1,60 +1,56 @@
 # Multi-Function Slack Bot
 
-A pluggable Slack bot backend that supports multiple functions with user routing, access control, and function switching via slash commands.
+A pluggable Slack bot backend that supports multiple functions with user routing, access control, and function switching via slash commands. Each bot runs in its own Docker container; each function lives in its own git repo.
 
 ## Project Structure
 
 ```
 /home/molt/Slack Bot/
-├── main.py                    # Single-bot entry point (accepts --config)
-├── run_all.py                 # Multi-bot process manager
-├── .env                       # Default Slack credentials (standalone mode)
-├── .env.slack_bot             # Company A Slack tokens
-├── .env.paired_helper         # Company B Slack tokens
+├── main.py                    # Bot entry point
+├── Dockerfile                 # Container image definition
+├── docker-compose.yml         # Multi-container orchestration
+├── docker-entrypoint.sh       # Installs function deps on container start
+├── deploy.sh                  # Pull function repos + rebuild containers
 ├── requirements.txt           # Core dependencies
-├── .venv/                     # Python virtual environment
 │
-├── bots/                      # Per-bot configuration
-│   ├── slack_bot.json         # Company A: env file, data dir, functions
-│   └── paired_helper.json     # Company B: env file, data dir, functions
+├── access.slack_bot.json      # Bot A: function list + access control
+├── access.paired_helper.json  # Bot B: function list + access control
+├── .env.slack_bot             # Bot A: Slack tokens
+├── .env.paired_helper         # Bot B: Slack tokens
 │
-├── core/                      # Management logic
+├── core/                      # Framework logic
 │   ├── models.py              # BotFunction interface
 │   ├── dispatcher.py          # Message routing
 │   ├── storage.py             # SQLite storage (user state, permissions, logs)
 │   └── plugin_loader.py       # Dynamic function discovery
 │
-├── data/
-│   ├── slack_bot/bot.db       # Company A database
-│   └── paired_helper/bot.db   # Company B database
+├── functions/                 # Function repos (gitignored, cloned on server)
+│   ├── payroll_lookup/
+│   ├── contact_finder/
+│   ├── description_writer/
+│   └── boolean_search/
 │
-├── payroll_lookup/            # Company A function
-│   ├── function.py            # BotFunction implementation
-│   ├── .env                   # Function-specific API keys
-│   └── tools/                 # Function logic
-│
-├── boolean_search/            # Company B function
-│   ├── function.py            # BotFunction implementation
-│   ├── .env                   # Function-specific API keys
-│   └── tools/                 # Function logic
-│
-└── <new_function>/            # Your new function goes here
-    ├── function.py            # Required: implements BotFunction
-    ├── .env                   # Optional: function-specific secrets
-    └── tools/                 # Optional: helper modules
+└── data/                      # Per-bot SQLite databases (Docker volumes)
+    ├── slack_bot/bot.db
+    └── paired_helper/bot.db
 ```
 
 ## Creating a New Function
 
-### Step 1: Create the Function Directory
+### Step 1: Create the Function Repository
+
+Create a new git repo for your function:
 
 ```bash
-mkdir -p "/home/molt/Slack Bot/<function_name>/tools"
+mkdir <function_name>
+cd <function_name>
+git init
+mkdir tools
 ```
 
 ### Step 2: Implement the BotFunction Interface
 
-Create `function.py` in your function directory with this template:
+Create `function.py` with this template:
 
 ```python
 """
@@ -112,7 +108,6 @@ class MyFunction(BotFunction):
         Returns:
             FunctionResponse with messages to send back
         """
-        # Handle help command
         if text.strip().lower() == "help":
             return FunctionResponse(
                 result=MessageResult.SUCCESS,
@@ -120,12 +115,9 @@ class MyFunction(BotFunction):
             )
 
         # Your logic here
-        # ...
-
-        # Return response
         return FunctionResponse(
             result=MessageResult.SUCCESS,
-            messages=["Response message 1", "Response message 2"],
+            messages=["Response message"],
             metadata={"key": "value"}  # Optional: logged for analytics
         )
 
@@ -137,10 +129,9 @@ class MyFunction(BotFunction):
             "Type `help` for more info."
         )
 
-    # Optional: override these for setup/cleanup
     def on_activate(self, user_id: str) -> str | None:
         """Called when user switches TO this function."""
-        return None  # Return a message or None
+        return None
 
     def on_deactivate(self, user_id: str) -> None:
         """Called when user switches AWAY from this function."""
@@ -152,7 +143,33 @@ def get_function() -> BotFunction:
     return MyFunction()
 ```
 
-### Step 3: Register the Slash Command in Slack
+### Step 3: Add Function Dependencies
+
+Create `requirements.txt` in your function repo with any function-specific packages. These are installed automatically when the Docker container starts.
+
+### Step 4: Clone into the Server
+
+```bash
+cd "/home/molt/Slack Bot/functions"
+git clone <your-function-repo-url>
+```
+
+### Step 5: Register in Bot Config
+
+Add your function to the appropriate `access.*.json` file:
+
+```json
+{
+  "functions": ["existing_func", "your_new_function"],
+  "admins": ["U123"],
+  "open_functions": [],
+  "function_permissions": {
+    "your_new_function": ["U456", "U789"]
+  }
+}
+```
+
+### Step 6: Register the Slash Command in Slack
 
 1. Go to your Slack App settings at https://api.slack.com/apps
 2. Navigate to **Slash Commands**
@@ -161,43 +178,11 @@ def get_function() -> BotFunction:
 5. Set Request URL (not needed for Socket Mode, but required field)
 6. Save
 
-### Step 4: Set Permissions (Optional)
-
-By default, new functions have no access list (nobody can use them). Configure access:
-
-```python
-# In Python, or create a setup script:
-from core.storage import PermissionsStorage
-
-perms = PermissionsStorage()
-
-# Option A: Make function open to everyone
-perms.set_function_open("<function_name>", True)
-
-# Option B: Add specific users
-perms.add_user_to_function("U1234567890", "<function_name>")
-perms.add_user_to_function("U0987654321", "<function_name>")
-
-# Option C: Make someone an admin (can access all functions)
-perms.add_admin("U1234567890")
-```
-
-### Step 5: Test
+### Step 7: Deploy
 
 ```bash
 cd "/home/molt/Slack Bot"
-source .venv/bin/activate
-python -c "
-from core.plugin_loader import PluginLoader
-loader = PluginLoader()
-func = loader.load_function('<function_name>')
-print(f'Loaded: {func.get_info().display_name}')
-"
-```
-
-Then restart the bot:
-```bash
-python main.py
+docker compose up --build -d
 ```
 
 ## Core Classes Reference
@@ -221,7 +206,7 @@ FunctionResponse(
     error="Detailed error for logs"
 )
 
-# No action needed (e.g., message didn't match any command)
+# No action needed
 FunctionResponse(
     result=MessageResult.NO_ACTION,
     messages=["I don't understand. Type 'help' for commands."]
@@ -268,7 +253,7 @@ logger.get_function_stats("my_func")         # Function's usage stats
 
 ## Database Schema
 
-SQLite database at `data/bot.db`:
+SQLite database at `data/<bot_name>/bot.db`:
 
 - `user_state` - Tracks each user's current function
 - `function_permissions` - User-to-function access mappings
@@ -283,79 +268,84 @@ These are always available:
 - `/bot-help` - List available functions
 - `/bot-status` - Show current function
 
-## Example Functions
+## Bot Configuration
 
-### payroll_lookup
+Each bot is defined by two files:
 
-See [payroll_lookup/function.py](payroll_lookup/function.py) for an example that:
-- Processes URLs from messages
-- Calls external APIs in parallel
-- Returns formatted responses
-- Handles errors gracefully
-
-### boolean_search
-
-See [boolean_search/function.py](boolean_search/function.py) for an example that:
-- Parses job descriptions via LLM into structured data
-- Starts with a broad query (titles + one primary skill) to guarantee results
-- Shows a numbered skill picker so users can `add 2,5` or `remove 3` to refine
-- Supports `add all`, `add <name>`, `remove all`, `platform seekout/linkedin`, `clear`
-- Tracks per-user selected skills in conversation state (SQLite)
-
-## Running the Bot
-
-### Multi-bot mode (production)
-
-Runs all bots defined in `bots/*.json` as separate processes:
-
-```bash
-cd "/home/molt/Slack Bot"
-source .venv/bin/activate
-python run_all.py
-```
-
-Or via systemd:
-```bash
-sudo systemctl start slack-bot
-```
-
-### Single-bot mode (development/testing)
-
-Run a specific bot by its config:
-```bash
-python main.py --config bots/slack_bot.json
-```
-
-Or run standalone (loads `.env`, discovers all functions):
-```bash
-python main.py
-```
-
-## Multi-Bot Configuration
-
-Each bot is defined by a JSON file in `bots/`:
-
+**`access.<bot_name>.json`** - which functions to load and who can use them:
 ```json
 {
-  "name": "my_bot",
-  "env_file": ".env.my_bot",
-  "data_dir": "data/my_bot",
-  "functions": ["function_a", "function_b"]
+  "functions": ["function_a", "function_b"],
+  "admins": ["U123"],
+  "open_functions": ["function_a"],
+  "function_permissions": {
+    "function_b": ["U456"]
+  }
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | Unique identifier (must match filename) |
-| `env_file` | Path to `.env` file with SLACK_BOT_TOKEN and SLACK_APP_TOKEN |
-| `data_dir` | Directory for this bot's SQLite database |
-| `functions` | List of function directories this bot should load |
+**`.env.<bot_name>`** - Slack credentials:
+```
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+```
 
-### Adding a new bot
+### Adding a New Bot
 
-1. Create `bots/<name>.json` with the config above
-2. Create `.env.<name>` with the bot's Slack tokens
-3. Restart the service: `sudo systemctl restart slack-bot`
+1. Create `.env.<name>` with the bot's Slack tokens
+2. Create `access.<name>.json` with the function list and permissions
+3. Add a new service to `docker-compose.yml`:
+   ```yaml
+   new-bot:
+     build: .
+     image: slack-bot:latest
+     restart: unless-stopped
+     env_file: .env.<name>
+     volumes:
+       - ./functions:/app/functions:ro
+       - ./data/<name>:/app/data
+       - ./access.<name>.json:/app/access.json:ro
+   ```
+4. Run `docker compose up --build -d`
+
+## Running the Bot
+
+### Production (Docker)
+
+```bash
+cd "/home/molt/Slack Bot"
+docker compose up --build -d
+```
+
+Manage containers:
+```bash
+docker compose ps                # Status
+docker compose logs -f           # Live logs
+docker compose logs slack-bot    # Logs for one bot
+docker compose restart slack-bot # Restart one bot
+docker compose down              # Stop all
+```
+
+### Deploying Updates
+
+For core framework changes:
+```bash
+git pull
+docker compose up --build -d
+```
+
+For function updates:
+```bash
+cd functions/<function_name>
+git pull
+cd ../..
+docker compose up --build -d
+```
+
+Or use the deploy script:
+```bash
+./deploy.sh
+```
 
 ## Environment Variables
 

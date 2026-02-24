@@ -1,0 +1,8 @@
+{
+  "functions": ["function_a", "function_b"],
+  "admins": ["U1234567890"],
+  "open_functions": ["function_a"],
+  "function_permissions": {
+    "function_b": ["U0987654321", "U1122334455"]
+  }
+}

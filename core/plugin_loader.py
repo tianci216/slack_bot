@@ -12,6 +12,7 @@ from .models import BotFunction
 logger = logging.getLogger(__name__)
 
 BOT_ROOT = Path(__file__).parent.parent
+FUNCTIONS_DIR = BOT_ROOT / "functions"
 
 
 class PluginLoader:
@@ -22,13 +23,10 @@ class PluginLoader:
     - function.py with a get_function() factory
     """
 
-    def __init__(self, root_dir: Path = BOT_ROOT, allowed_functions: list[str] | None = None):
-        self.root_dir = root_dir
+    def __init__(self, root_dir: Path | None = None, allowed_functions: list[str] | None = None):
+        self.root_dir = root_dir if root_dir is not None else FUNCTIONS_DIR
         self.allowed_functions = allowed_functions
-        self.excluded_dirs = {
-            'core', 'data', 'bots', 'templates', '.venv', '__pycache__',
-            '.git', '.claude', '.tmp'
-        }
+        self.excluded_dirs = {'__pycache__', '.git', '.venv', '.tmp'}
 
     def discover_functions(self) -> list[str]:
         """

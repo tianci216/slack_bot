@@ -10,7 +10,6 @@ Central bot that:
 import os
 import sys
 import json
-import argparse
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
@@ -32,25 +31,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Multi-Function Slack Bot")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to bot config JSON file (e.g., bots/slack_bot.json)"
-    )
-    return parser.parse_args()
-
-
-def load_environment(env_file: str | None = None):
+def load_environment():
     """Load and validate environment variables."""
-    if env_file:
-        env_path = BOT_DIR / env_file
-    else:
-        env_path = BOT_DIR / ".env"
-    load_dotenv(env_path)
+    load_dotenv(BOT_DIR / ".env")  # no-op if missing; docker injects vars via env_file
 
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -62,26 +45,24 @@ def load_environment(env_file: str | None = None):
         sys.exit(1)
 
 
-# Parse config and initialize
-args = parse_args()
-config = None
-
-if args.config:
-    config_path = BOT_DIR / args.config
-    with open(config_path) as f:
-        config = json.load(f)
-    logger.info(f"Loaded bot config: {config.get('name', args.config)}")
-
-load_environment(config.get("env_file") if config else None)
+# Initialize
+load_environment()
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
 
-_data_dir = BOT_DIR / config["data_dir"] if config and "data_dir" in config else None
-_allowed_functions = config.get("functions") if config else None
-dispatcher = Dispatcher(allowed_functions=_allowed_functions, data_dir=_data_dir)
+# Load access config from access.json if present
+_access_config = {}
+_access_path = BOT_DIR / "access.json"
+if _access_path.exists():
+    with open(_access_path) as f:
+        _access_config = json.load(f)
 
-# Sync access config from bot JSON if present
-if config and "access" in config:
-    dispatcher.permissions.sync_from_config(config["access"])
+dispatcher = Dispatcher(
+    allowed_functions=_access_config.get("functions") or None,
+    data_dir=BOT_DIR / "data"
+)
+
+if _access_config:
+    dispatcher.permissions.sync_from_config(_access_config)
 
 
 # ============================================================================

@@ -1,6 +1,9 @@
 # Environment and credentials
 .env
 *.env
+!.env.example
+access.*.json
+!access.example.json
 
 # Python
 __pycache__/
@@ -28,3 +31,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Function repos (each is its own git repo, cloned on server)
+functions/
